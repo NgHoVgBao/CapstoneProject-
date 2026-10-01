@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Register New Member</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f0ebeb;
+    }
+
+    /* Header & Nút Back */
+    .header-container {
+      position: relative;   
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      font-size: 44px;
+      margin: 0;
+      font-weight: 700;
+    }
+
+    .back-btn {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 8px 16px;
+      background-color: #dc3545;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .back-btn:hover {
+      background-color: #b02a37;
+    }
+
+    /* Container chính chứa 2 cột */
+    .container {
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      gap: 20px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    /* Cột bên trái: Bảng thông tin + Nút Register */
+    .form-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+    }
+
+    th {
+      background-color: #4CAF50;
+      color: white;
+      padding: 12px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      text-align: center;
+    }
+
+    td {
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+    }
+
+    .required {
+      color: red;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+
+    /* NÚT REGISTER NEW MEMBER */
+    .btn-submit {
+      width: 100%;
+      padding: 12px;
+      background-color: #198754;
+      color: #f4c542;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+    .btn-submit:hover {
+      background-color: #146c43;
+    }
+
+    .btn-submit:active {
+      transform: scale(0.99);
+    }
+
+    /* Cột bên phải: Chứa Title + Preview + Nút Image queue */
+    .camera-container {
+      width: 380px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background-color: #ffffff;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-sizing: border-box;
+    }
+
+    .preview-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #222;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    /* Khung xem trước màu xám bo viền đen mỏng */
+    .camera-box {
+      width: 100%;
+      height: 230px;
+      background-color: #cccccc;
+      border: 1px solid #666666;
+      border-radius: 6px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .camera-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Nút Image Queue */
+    .image-queue-btn {
+      padding: 10px 24px;
+      background-color: #198754;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+    .image-queue-btn:hover {
+      background-color: #146c43;
+    }
+
+    .image-queue-btn:active {
+      transform: scale(0.99);
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header-container">
+    <a href="/monitor" class="back-btn">Back</a>
+    <h1>Register new member</h1>
+  </header>
+
+  <div class="container">
+    <!-- CỘT BÊN TRÁI: BẢNG NHẬP THÔNG TIN & NÚT REGISTER -->
+    <div class="form-container">
+      <form id="registerForm" onsubmit="handleRegister(event)">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 35%;">Field</th>
+              <th style="width: 65%;">Information</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><label for="fullname">Full name <span class="required">*</span></label></td>
+              <td><input type="text" id="fullname" name="fullname" required></td>
+            </tr>
+            <tr>
+              <td><label for="id_number">ID number <span class="required">*</span></label></td>
+              <td><input type="text" id="id_number" name="id_number" required></td>
+            </tr>
+            <tr>
+              <td><label for="email">Email <span class="required">*</span></label></td>
+              <td><input type="email" id="email" name="email" required></td>
+            </tr>
+            <tr>
+              <td><label for="position">Position <span class="required">*</span></label></td>
+              <td><input type="text" id="position" name="position" required></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <button type="submit" class="btn-submit" style="margin-top: 15px;">Register new member</button>
+      </form>
+    </div>
+
+    <!-- CỘT BÊN PHẢI: KHUNG PREVIEW ĐÚNG THEO HÌNH MẪU -->
+    <div class="camera-container">
+      <div class="preview-title">Selected Image Preview</div>
+      
+      <div class="camera-box" id="previewBox">
+        <!-- SVG Icon Camera -->
+        <svg id="camPlaceholder" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+          <circle cx="12" cy="13" r="4"></circle>
+        </svg>
+        <img id="selectedImagePreview" alt="Selected image preview" style="display: none;">
+      </div>
+
+      <a href="storage.html" class="image-queue-btn">Image queue</a>
+    </div>
+  </div>
+
+  <script>
+    const selectedImagePath = localStorage.getItem('selected_preview_image');
+    if (selectedImagePath) {
+      const previewImage = document.getElementById('selectedImagePreview');
+      const cameraPlaceholder = document.getElementById('camPlaceholder');
+      previewImage.src = selectedImagePath;
+      previewImage.style.display = 'block';
+      cameraPlaceholder.style.display = 'none';
+    }
+
+    async function handleRegister(event) {
+      event.preventDefault();
+
+      const now = new Date();
+      const currentTimestamp = now.getFullYear() + "-" +
+        String(now.getMonth() + 1).padStart(2, '0') + "-" +
+        String(now.getDate()).padStart(2, '0') + " " +
+        String(now.getHours()).padStart(2, '0') + ":" +
+        String(now.getMinutes()).padStart(2, '0') + ":" +
+        String(now.getSeconds()).padStart(2, '0');
+
+      const payload = {
+        full_name: document.getElementById('fullname').value,
+        id_number: document.getElementById('id_number').value,
+        email: document.getElementById('email').value,
+        position: document.getElementById('position').value,
+        image_path: selectedImagePath || '/uploads/default.jpg',
+        register_date: currentTimestamp
+      };
+
+      try {
+        const response = await fetch('/api/register', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.status === 'success') {
+          localStorage.removeItem('selected_preview_image');
+          alert('Thêm thành viên mới thành công vào lúc: ' + currentTimestamp);
+          window.location.href = '/monitor';
+        } else {
+          alert('Lỗi đăng ký: ' + (result.message || 'Không thể đăng ký!'));
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        alert('Lỗi kết nối tới Server!');
+      }
+    }
+  </script>
+</body>
+</html>

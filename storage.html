@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Storage - Image Queue</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background-color: #f0ebeb;
+      font-family: Arial, sans-serif;
+    }
+
+    /* Header & Nút Back */
+    .storage-header {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 70px;
+      padding: 10px 16px;
+      background-color: #ffffff;
+      border-bottom: 1px solid #e5e5e5;
+      color: #222222;
+      font-size: 36px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .back-btn {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 8px 16px;
+      background-color: #dc3545;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .back-btn:hover {
+      background-color: #b02a37;
+    }
+
+    /* Container chính */
+    .main-container {
+      max-width: 1000px;
+      margin: 30px auto;
+      padding: 0 20px;
+    }
+
+    /* Khung lưới hiển thị danh sách ảnh */
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    /* Thẻ chứa từng tấm ảnh */
+    .image-card {
+      background-color: #ffffff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .image-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .upload-card {
+      min-height: 286px;
+      border: 2px dashed #adb5bd;
+      background-color: #f1f3f5;
+      color: #6c757d;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .upload-card:hover {
+      border-color: #198754;
+      color: #146c43;
+      background-color: #e9f5ee;
+    }
+
+    .upload-card input {
+      display: none;
+    }
+
+    .upload-plus {
+      font-size: 58px;
+      line-height: 1;
+      font-weight: 300;
+    }
+
+    .upload-label {
+      margin-top: 12px;
+      font-size: 15px;
+      font-weight: bold;
+    }
+
+    /* Ô hiển thị ảnh */
+    .image-wrapper {
+      width: 100%;
+      height: 180px;
+      background-color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    .image-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Thông tin ảnh */
+    .image-info {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+
+    .file-name {
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .upload-time {
+      font-size: 12px;
+      color: #666;
+    }
+
+    /* Nhóm nút hành động */
+    .card-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-select {
+      flex: 1;
+      padding: 6px 0;
+      background-color: #198754;
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .btn-select:hover {
+      background-color: #146c43;
+    }
+
+    .btn-delete {
+      padding: 6px 10px;
+      background-color: #6c757d;
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .btn-delete:hover {
+      background-color: #5a6268;
+    }
+
+    /* Trạng thái trống */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #777;
+      font-size: 18px;
+      background: white;
+      border-radius: 8px;
+      border: 1px dashed #ccc;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="storage-header">
+    <a href="/register" class="back-btn">Back</a>
+    Storage
+  </header>
+
+  <main class="main-container">
+    <!-- Lưới chứa các ảnh trong Queue -->
+    <div class="image-grid" id="imageGrid">
+      <label class="image-card upload-card" for="manualImageInput">
+        <input id="manualImageInput" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" onchange="uploadManualImage(event)">
+        <span class="upload-plus">+</span>
+        <span class="upload-label">Add image</span>
+      </label>
+    </div>
+  </main>
+
+  <script>
+    async function loadStorageImages() {
+      const grid = document.getElementById('imageGrid');
+      try {
+        const response = await fetch('/api/storage-images');
+        if (!response.ok) throw new Error('Cannot load storage images');
+        const images = await response.json();
+        const uploadCard = `
+          <label class="image-card upload-card" for="manualImageInput">
+            <input id="manualImageInput" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" onchange="uploadManualImage(event)">
+            <span class="upload-plus">+</span>
+            <span class="upload-label">Add image</span>
+          </label>`;
+        if (!images.length) {
+          grid.innerHTML = uploadCard + '<div class="empty-state">No images in storage</div>';
+          return;
+        }
+        grid.innerHTML = uploadCard + images.map(image => `
+          <div class="image-card">
+            <div class="image-wrapper">
+              <img src="${image.image_path}" alt="${image.file_name}">
+            </div>
+            <div class="image-info">
+              <div class="file-name" title="${image.file_name}">${image.file_name}</div>
+              <div class="upload-time">${image.upload_time}</div>
+              <div class="card-actions">
+                <button class="btn-select" onclick="selectImage('${image.image_path}')">Select</button>
+                <button class="btn-delete" onclick="deleteImage(${image.id})">Delete</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        grid.innerHTML = '<div class="empty-state">Cannot load images from server</div>';
+        console.error(error);
+      }
+    }
+
+    async function uploadManualImage(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const allowedTypes = ['image/jpeg', 'image/png'];
+      if (!allowedTypes.includes(file.type)) {
+        alert('Please select a JPEG or PNG image.');
+        event.target.value = '';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const response = await fetch('/api/upload-storage-file', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await response.json();
+        if (!response.ok || result.status !== 'success') {
+          throw new Error(result.message || 'Upload failed');
+        }
+        await loadStorageImages();
+      } catch (error) {
+        alert(error.message);
+        console.error(error);
+      } finally {
+        event.target.value = '';
+      }
+    }
+
+    // Hàm chọn ảnh để truyền ngược lại trang Đăng ký
+    function selectImage(imagePath) {
+      alert("Đã chọn ảnh: " + imagePath);
+      // Có thể lưu path vào localStorage để trang register đọc
+      localStorage.setItem('selected_preview_image', imagePath);
+      window.location.href = '/register';
+    }
+
+    // Hàm xóa ảnh khỏi hàng đợi
+    async function deleteImage(imageId) {
+      if (confirm("Bạn có chắc muốn xóa ảnh này khỏi danh sách?")) {
+        await fetch(`/api/storage-images/${imageId}`, { method: 'DELETE' });
+        loadStorageImages();
+      }
+    }
+
+    loadStorageImages();
+  </script>
+</body>
+</html>

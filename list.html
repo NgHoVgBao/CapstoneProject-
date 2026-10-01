@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Member list</title>
+	<style>
+		* {
+			box-sizing: border-box;
+		}
+
+		html,
+		body {
+			margin: 0;
+			min-height: 100%;
+			background: #ffffff;
+			font-family: Arial, sans-serif;
+		}
+
+		.header {
+            display: flex;
+            align-items: center;      /* Căn giữa theo chiều dọc */
+            justify-content: center;  /* Căn giữa theo chiều ngang */
+		position: relative;
+            height: 54px;
+            padding: 0 16px;
+            background: #ffffff;
+            border-bottom: 1px solid #e5e5e5;
+            color: #222222;
+            font-size: 54px;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(5, 0, 15, 0.1);}
+
+		.back-btn {
+			position: absolute;
+			left: 16px;
+			top: 50%;
+			transform: translateY(-50%);
+			padding: 8px 16px;
+			background-color: #dc3545;
+			border-radius: 6px;
+			color: #f1f0e5;
+			font-size: 14px;
+			font-weight: 700;
+			text-decoration: none;
+		}
+
+		.back-btn:hover {
+			background-color: #b02a37;
+		}
+
+		.member-list {
+			width: min(1100px, calc(100% - 32px));
+			margin: 24px auto;
+			overflow-x: auto;
+		}
+
+		.member-table {
+			width: 100%;
+			border-collapse: collapse;
+			color: #222222;
+			font-size: 14px;
+			text-align: left;
+		}
+
+		.member-table th,
+		.member-table td {
+			padding: 12px 14px;
+			border: 1px solid #dddddd;
+		}
+
+		.member-table th {
+			background: #f4f4f4;
+			font-weight: 700;
+		}
+
+		.member-table tbody tr:nth-child(even) {
+			background: #fafafa;
+		}
+
+		.member-table .message {
+			color: #777777;
+			text-align: center;
+		}
+	</style>
+</head>
+<body>
+	<header class="header" style="text-align: center;">
+		<a class="back-btn" href="/monitor">Back</a>
+		Member list
+	</header>
+
+	<main class="member-list">
+		<table class="member-table">
+			<thead>
+				<tr>
+					<th scope="col">ID number</th>
+					<th scope="col">Full name</th>
+					<th scope="col">Position</th>
+					<th scope="col">Register date</th>
+				</tr>
+			</thead>
+			<tbody id="memberTableBody">
+				<tr>
+					<td class="message" colspan="4">Loading members...</td>
+				</tr>
+			</tbody>
+		</table>
+	</main>
+
+	<script>
+		async function loadMembers() {
+			const tableBody = document.getElementById('memberTableBody');
+
+			try {
+				const response = await fetch('/api/users');
+				if (!response.ok) {
+					throw new Error('Unable to load members');
+				}
+
+				const members = await response.json();
+				if (members.length === 0) {
+					tableBody.innerHTML = '<tr><td class="message" colspan="4">No members found.</td></tr>';
+					return;
+				}
+
+				tableBody.innerHTML = members.map((member) => `
+					<tr>
+						<td>${member.user_id || ''}</td>
+						<td>${member.user_name || ''}</td>
+						<td>${member.position || ''}</td>
+						<td>${member.register_date || ''}</td>
+					</tr>
+				`).join('');
+			} catch (error) {
+				tableBody.innerHTML = '<tr><td class="message" colspan="4">Unable to load members.</td></tr>';
+			}
+		}
+
+		loadMembers();
+	</script>
+</body>
+</html>
