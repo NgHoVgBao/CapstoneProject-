@@ -131,6 +131,14 @@
         }
 
         .badge-stranger {
+            background-color: #e2e3e5;
+            color: #383d41;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .badge-fake {
             background-color: #f8d7da;
             color: #721c24;
             padding: 4px 10px;
@@ -138,7 +146,7 @@
             font-weight: bold;
         }
 
-        /* STYLES DÀNH CHO POPUP MODAL (GIAO DIỆN CON) */
+        /* STYLES DÀNH CHO POPUP MODAL */
         .modal-overlay {
             display: none;
             position: fixed;
@@ -155,7 +163,7 @@
         .modal-card {
             background: #ffffff;
             width: 90%;
-            max-width: 420px;
+            max-width: 520px;
             border-radius: 10px;
             padding: 24px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.2);
@@ -211,6 +219,24 @@
             color: #111;
             font-weight: bold;
             text-align: right;
+        }
+
+        .modal-avatar-container {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .modal-avatar {
+            width: 320px;
+            height: 320px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 3px solid #0d6efd;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+        }
+
+        .modal-avatar.border-fake {
+            border-color: #dc3545;
         }
     </style>
 </head>
@@ -275,10 +301,14 @@
                 }
 
                 logTableBody.innerHTML = logsData.map((log, index) => {
-                    const isStaff = log.position !== 'Stranger' && log.user_id !== 'UNKNOWN';
-                    const statusBadge = isStaff 
-                        ? `<span class="badge-staff">Nhân viên</span>` 
-                        : `<span class="badge-stranger">Người lạ</span>`;
+                    let statusBadge = '';
+                    if (log.user_id === 'SPOOF' || log.full_name === 'Fake Attendance') {
+                        statusBadge = `<span class="badge-fake">❌ Giả mạo</span>`;
+                    } else if (log.position !== 'Stranger' && log.user_id !== 'UNKNOWN') {
+                        statusBadge = `<span class="badge-staff">✔️ Nhân viên</span>`;
+                    } else {
+                        statusBadge = `<span class="badge-stranger">❓ Người lạ</span>`;
+                    }
 
                     return `
                         <tr class="clickable-row" onclick="showLogDetails(${index})">
@@ -297,10 +327,28 @@
             if (!log) return;
 
             const modalBody = document.getElementById('modalBody');
-            const isStaff = log.position !== 'Stranger' && log.user_id !== 'UNKNOWN';
+            const isFake = log.user_id === 'SPOOF' || log.full_name === 'Fake Attendance';
+            const isStaff = !isFake && log.position !== 'Stranger' && log.user_id !== 'UNKNOWN';
 
-            if (isStaff) {
+            const imgSrc = log.image_path || '/uploads/default.jpg';
+            const avatarBorderClass = isFake ? 'border-fake' : '';
+
+            const imageHtml = `
+                <div class="modal-avatar-container">
+                    <img src="${imgSrc}" class="modal-avatar ${avatarBorderClass}" alt="Face Log" onerror="this.src='/uploads/default.jpg'">
+                </div>
+            `;
+
+            if (isFake) {
                 modalBody.innerHTML = `
+                    ${imageHtml}
+                    <div class="detail-item"><span class="detail-label">Status:</span><span class="detail-value" style="color:#dc3545;">⚠️ Fake Attendance Detected</span></div>
+                    <div class="detail-item"><span class="detail-label">Access Date:</span><span class="detail-value">${log.access_date}</span></div>
+                    <div class="detail-item"><span class="detail-label">Similar to:</span><span class="detail-value" style="color:#0d6efd;">${log.similar_to || 'None'}</span></div>
+                `;
+            } else if (isStaff) {
+                modalBody.innerHTML = `
+                    ${imageHtml}
                     <div class="detail-item"><span class="detail-label">Accurate:</span><span class="detail-value">${log.accuracy}%</span></div>
                     <div class="detail-item"><span class="detail-label">Access Date:</span><span class="detail-value">${log.access_date}</span></div>
                     <div class="detail-item"><span class="detail-label">Name:</span><span class="detail-value">${log.full_name}</span></div>
@@ -310,7 +358,8 @@
                 `;
             } else {
                 modalBody.innerHTML = `
-                    <div class="detail-item"><span class="detail-label">Status:</span><span class="detail-value" style="color:red;">Stranger</span></div>
+                    ${imageHtml}
+                    <div class="detail-item"><span class="detail-label">Status:</span><span class="detail-value" style="color:#6c757d;">Stranger</span></div>
                     <div class="detail-item"><span class="detail-label">Access Date:</span><span class="detail-value">${log.access_date}</span></div>
                     <div class="detail-item"><span class="detail-label">Similar to:</span><span class="detail-value">${log.similar_to || 'None'}</span></div>
                 `;
@@ -332,7 +381,8 @@
         monitorWs.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'result') {
+                // Nhận thông báo WebSocket từ Backend -> Tải lại danh sách log ngay lập tức
+                if (data.status === 'success' || data.status === 'warning') {
                     loadAccessLogs();
                 }
             } catch (e) {}

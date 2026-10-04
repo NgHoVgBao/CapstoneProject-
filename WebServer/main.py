@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from insightface.app import FaceAnalysis
+from liveness import LivenessDetector
 
 app = FastAPI(title="ESP32-S3 Face Recognition Hub")
 
@@ -23,13 +24,22 @@ ai_app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
 ai_app.prepare(ctx_id=0, det_size=(640, 640))
 print("-> Mô hình AI đã sẵn sàng!")
 
+# --- KHỞI TẠO ANTI-SPOOFING (LIVENESS) ---
+print("-> Đang tải mô hình Anti-Spoofing SilentFace...")
+liveness_detector = LivenessDetector(device_id=0)
+print("-> Mô hình Anti-Spoofing đã sẵn sàng!")
+
 # --- THƯ MỤC LƯU TRỮ ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
+ATTENDANCE_DIR = os.path.join(BASE_DIR, "attendance")
+os.makedirs(ATTENDANCE_DIR, exist_ok=True)
+app.mount("/attendance", StaticFiles(directory=ATTENDANCE_DIR), name="attendance")
 
 # --- CƠ SỞ DỮ LIỆU SQLITE ---
 DB_NAME = os.path.join(BASE_DIR, "database.db")
@@ -45,18 +55,19 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    
-    # 1. Bảng Lịch sử Điểm danh (Tạo mới nếu chưa có)
+
+    # 1. Bảng lưu thông tin khuôn mặt thành viên
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS access_logs (
+        CREATE TABLE IF NOT EXISTS storage_faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id_num TEXT NOT NULL,
-            full_name TEXT NOT NULL,
+            user_name TEXT NOT NULL,
             email TEXT DEFAULT '',
             position TEXT NOT NULL,
-            access_date TEXT NOT NULL,
-            accuracy REAL DEFAULT 0.0,
-            similar_to TEXT DEFAULT ''
+            register_date TEXT NOT NULL,
+            image_path TEXT DEFAULT '',
+            image_base64 TEXT DEFAULT '',
+            embedding TEXT NOT NULL
         )
     ''')
     
@@ -70,18 +81,38 @@ def init_db():
         )
     ''')
 
-    # 3. Migration tự động: Thêm cột 'email' nếu file DB cũ đã tồn tại bảng nhưng chưa có cột này
+    # 3. Tạo bảng access_logs nếu chưa có
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS access_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id_num TEXT DEFAULT '',
+            full_name TEXT DEFAULT '',
+            user_name TEXT DEFAULT '',
+            email TEXT DEFAULT '',
+            position TEXT DEFAULT '',
+            access_date TEXT DEFAULT '',
+            accuracy REAL DEFAULT 0.0,
+            similar_to TEXT DEFAULT '',
+            image_path TEXT DEFAULT ''
+        )
+    ''')
+
+    # 4. Migration bổ sung cột an toàn cho access_logs
     cursor.execute("PRAGMA table_info(access_logs)")
     columns = [column[1] for column in cursor.fetchall()]
-    
-    if 'email' not in columns:
-        cursor.execute("ALTER TABLE access_logs ADD COLUMN email TEXT DEFAULT ''")
-    if 'accuracy' not in columns:
-        cursor.execute("ALTER TABLE access_logs ADD COLUMN accuracy REAL DEFAULT 0.0")
-    if 'similar_to' not in columns:
-        cursor.execute("ALTER TABLE access_logs ADD COLUMN similar_to TEXT DEFAULT ''")
 
-    # Gom toàn bộ thay đổi và chỉ commit / close đúng 1 lần ở cuối
+    for col_name, col_type in [
+        ('full_name', "TEXT DEFAULT ''"),
+        ('email', "TEXT DEFAULT ''"),
+        ('position', "TEXT DEFAULT ''"),
+        ('access_date', "TEXT DEFAULT ''"),
+        ('accuracy', "REAL DEFAULT 0.0"),
+        ('similar_to', "TEXT DEFAULT ''"),
+        ('image_path', "TEXT DEFAULT ''")
+    ]:
+        if col_name not in columns:
+            cursor.execute(f"ALTER TABLE access_logs ADD COLUMN {col_name} {col_type}")
+
     conn.commit()
     conn.close()
 
@@ -135,67 +166,123 @@ def compute_cosine_similarity(vec1, vec2):
     return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
 # --- HÀM DÙNG CHUNG: SO KHỚP KHUÔN MẶT + GHI LOG (dùng cho cả WebSocket lẫn REST) ---
-def match_face_and_log(input_vec) -> dict:
+
+def match_face_and_log(input_vec, image_path: str = "", is_fake: bool = False) -> dict:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT user_id_num, user_name, email, position, image_path, embedding FROM storage_faces WHERE embedding != '[]'")
-    rows = cursor.fetchall()
+
+    cursor.execute("SELECT user_id_num, user_name, email, position, embedding FROM storage_faces")
+    users = cursor.fetchall()
 
     best_match = None
-    max_similarity = -1.0
+    max_similarity = 0.0
+    most_similar_name = "None"
     THRESHOLD = 0.4
 
-    for row in rows:
-        stored_vec = np.array(json.loads(row["embedding"]))
-        sim = compute_cosine_similarity(input_vec, stored_vec)
-        if sim > max_similarity:
-            max_similarity = sim
-            most_similar_name = row["user_name"]
-            if sim >= THRESHOLD:
+    for user in users:
+        if not user["embedding"]:
+            continue
+        try:
+            db_vec = np.array(json.loads(user["embedding"]))
+            if len(db_vec) == 0:
+                continue
+            
+            similarity = compute_cosine_similarity(input_vec, db_vec)
+            
+            if similarity > max_similarity:
+                max_similarity = similarity
+                most_similar_name = user["user_name"]
+
+            if similarity > THRESHOLD and (best_match is None or similarity > best_match["similarity"]):
                 best_match = {
-                    "user_id_num": row["user_id_num"],
-                    "name": row["user_name"],
-                    "email": row["email"],
-                    "position": row["position"],
-                    "similarity": round(float(sim) * 100, 1)
+                    "user_id_num": user["user_id_num"],
+                    "name": user["user_name"],
+                    "email": user["email"],
+                    "position": user["position"],
+                    "similarity": round(float(similarity) * 100, 1)
                 }
+        except Exception as e:
+            print(f"Lỗi đọc embedding user {user['user_id_num']}: {e}")
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    if best_match:
+    # =========================================================================
+    # 🚨 TRƯỜNG HỢP 1: PHÁT HIỆN GIẢ MẠO (FAKE ATTENDANCE)
+    # =========================================================================
+    if is_fake:
+        highest_sim = round(float(max_similarity) * 100, 1) if max_similarity > 0 else 0.0
+        similar_info = f"{most_similar_name} ({highest_sim}%)" if max_similarity > 0 else "None"
+        
         cursor.execute(
             """INSERT INTO access_logs 
-               (user_id_num, full_name, email, position, access_date, accuracy, similar_to) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (best_match["user_id_num"], best_match["name"], best_match["email"], 
-             best_match["position"], now_str, best_match["similarity"], "")
+               (user_id_num, full_name, email, position, access_date, accuracy, similar_to, image_path) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("SPOOF", "Fake Attendance", "", "Warning", now_str, highest_sim, similar_info, image_path)
         )
         conn.commit()
         conn.close()
-        # CHỈ TRẢ VỀ ID NUMBER KHI NHẬN DIỆN THÀNH CÔNG
+        
+        return {
+            "status": "warning",
+            "is_matched": False,
+            "is_fake": True,
+            "user_id_num": "SPOOF",
+            "full_name": "Fake Attendance",
+            "access_date": now_str,
+            "similar_to": similar_info,
+            "image_path": image_path
+        }
+
+    # =========================================================================
+    # TRƯỜNG HỢP 2: MẶT THẬT VÀ ĐIỂM DANH THÀNH CÔNG
+    # =========================================================================
+    if best_match:
+        cursor.execute(
+            """INSERT INTO access_logs 
+               (user_id_num, full_name, email, position, access_date, accuracy, similar_to, image_path) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (best_match["user_id_num"], best_match["name"], best_match["email"], 
+             best_match["position"], now_str, best_match["similarity"], "", image_path)
+        )
+        conn.commit()
+        conn.close()
         return {
             "status": "success",
             "is_matched": True,
-            "user_id_num": str(best_match["user_id_num"])
+            "is_fake": False,
+            "user_id_num": str(best_match["user_id_num"]),
+            "full_name": best_match["name"],
+            "access_date": now_str,
+            "accuracy": best_match["similarity"],
+            "image_path": image_path
         }
+    
+    # =========================================================================
+    # TRƯỜNG HỢP 3: MẶT THẬT NHƯNG LÀ NGƯỜI LẠ (STRANGER)
+    # =========================================================================
     else:
         highest_sim = round(float(max_similarity) * 100, 1) if max_similarity > 0 else 0.0
         similar_info = f"{most_similar_name} ({highest_sim}%)" if max_similarity > 0 else "None"
         
         cursor.execute(
             """INSERT INTO access_logs 
-               (user_id_num, full_name, email, position, access_date, accuracy, similar_to) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            ("UNKNOWN", "Stranger", "", "Stranger", now_str, highest_sim, similar_info)
+               (user_id_num, full_name, email, position, access_date, accuracy, similar_to, image_path) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            ("UNKNOWN", "Stranger", "", "Stranger", now_str, highest_sim, similar_info, image_path)
         )
         conn.commit()
         conn.close()
-        # KHÔNG KHỚP THÌ TRẢ VỀ UNKNOWN
         return {
             "status": "success",
             "is_matched": False,
-            "user_id_num": "UNKNOWN"
+            "is_fake": False,
+            "user_id_num": "UNKNOWN",
+            "full_name": "Stranger",
+            "access_date": now_str,
+            "similar_to": similar_info,
+            "image_path": image_path
         }
+
 # --- QUẢN LÝ WEBSOCKET CLIENTS (CHO GIAO DIỆN WEB MONITOR) ---
 class ConnectionManager:
     def __init__(self):
@@ -244,22 +331,44 @@ async def process_register_frame(frame_bytes: bytes, websocket: WebSocket):
     conn.close()
 
 async def process_attendance_frame(frame_bytes: bytes, websocket: WebSocket):
+    # 1. Giải mã frame từ ESP32
     img = decode_rgb565_frame(frame_bytes)
     if img is None:
         await websocket.send_json({"status": "error", "user_id_num": "FAILED"})
         return
 
+    # 2. Nhận diện vị trí khuôn mặt bằng InsightFace
     faces = ai_app.get(img)
     if len(faces) == 0:
         await websocket.send_json({"status": "success", "is_matched": False, "user_id_num": "UNKNOWN"})
         return
 
+    # 3. LƯU ẢNH VÀO THƯ MỤC ATTENDANCE (Luôn thực hiện dù thật hay giả)
+    timestamp = int(time.time())
+    file_name = f"LOG_{timestamp}_{uuid.uuid4().hex[:6]}.jpg"
+    file_path = os.path.join(ATTENDANCE_DIR, file_name)
+    cv2.imwrite(file_path, img)
+    web_image_path = f"/attendance/{file_name}"
+
+    # 4. Trích xuất Bounding Box để kiểm tra Anti-Spoofing (SilentFace)
+    x1, y1, x2, y2 = map(int, faces[0].bbox)
+    w, h = max(0, x2 - x1), max(0, y2 - y1)
+    bbox = [x1, y1, w, h]
+
+    is_real, confidence = liveness_detector.check_liveness(img, bbox)
     input_vec = faces[0].embedding
-    response_data = match_face_and_log(input_vec)
-    
-    # Gửi JSON gọn chỉ chứa ID về ESP32
+
+    # 5. Phân nhánh xử lý Ghi log & Truy vết
+    if not is_real:
+        print(f"❌ CẢNH BÁO: Giả mạo bị phát hiện! (Độ tin cậy: {confidence:.2f}) -> Đang truy vết đối tượng...")
+        # Gọi match_face_and_log với cờ is_fake=True để tìm xem khuôn mặt này giống ai nhất trong DB
+        response_data = match_face_and_log(input_vec, image_path=web_image_path, is_fake=True)
+    else:
+        # Mặt thật -> Điểm danh bình thường
+        response_data = match_face_and_log(input_vec, image_path=web_image_path, is_fake=False)
+
+    # 6. Gửi kết quả đầy đủ về ESP32 và Broadcast lên Web Monitor
     await websocket.send_json(response_data)
-    # Broadcast thông báo cho Web Monitor
     await manager.broadcast(response_data)
 
 @app.websocket("/ws/register")
@@ -476,44 +585,66 @@ async def upload_face_for_attendance(request: Request):
 async def register_member(data: Dict[Any, Any]):
     full_name = data.get("full_name")
     id_number = data.get("id_number")
-    email = data.get("email")
-    position = data.get("position")
-    image_path = data.get("image_path", "/uploads/default.jpg")
+    email = data.get("email", "")
+    position = data.get("position", "")
+    image_path = data.get("image_path", "")
     register_date = data.get("register_date", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
     if not full_name or not id_number:
         return JSONResponse(status_code=400, content={"status": "error", "message": "Thiếu thông tin bắt buộc!"})
 
     embedding_json = json.dumps([])
-    
+    image_base64_str = ""
+
+    # Nếu có chọn ảnh từ hàng chờ storage/uploads
     if image_path and image_path != "/uploads/default.jpg":
         full_file_path = os.path.join(BASE_DIR, image_path.lstrip("/"))
         if os.path.exists(full_file_path):
             img = cv2.imread(full_file_path)
             if img is not None:
+                # 1. Trích xuất khuôn mặt AI
                 faces = ai_app.get(img)
                 if len(faces) > 0:
                     embedding_json = json.dumps(faces[0].embedding.tolist())
+                
+                # 2. Chuyển ảnh thành Base64 để lưu vĩnh viễn vào DB gói đăng ký
+                ok, encoded_img = cv2.imencode(".jpg", img)
+                if ok:
+                    base64_data = base64.b64encode(encoded_img.tobytes()).decode("ascii")
+                    image_base64_str = f"data:image/jpeg;base64,{base64_data}"
 
+            # 3. XÓA ẢNH KHỎI THƯ MỤC UPLOADS VÀ BẢNG STORAGE_QUEUE
+            try:
+                os.remove(full_file_path)
+            except Exception as e:
+                print(f"Lỗi khi xóa file ảnh tạm: {e}")
+
+            conn_del = get_db_connection()
+            conn_del.execute("DELETE FROM storage_queue WHERE image_path = ?", (image_path,))
+            conn_del.commit()
+            conn_del.close()
+
+    # Ghi thông tin gói đăng ký vào CSDL (bổ sung image_base64)
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO storage_faces (user_id_num, user_name, email, position, register_date, image_path, embedding) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO storage_faces (user_id_num, user_name, email, position, register_date, image_path, image_base64, embedding) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (id_number, full_name, email, position, register_date, image_path, embedding_json)
+        (id_number, full_name, email, position, register_date, image_path, image_base64_str, embedding_json)
     )
     conn.commit()
     conn.close()
 
-    return {"status": "success", "message": f"Đã đăng ký thành công thành viên {full_name}!"}
+    return {"status": "success", "message": f"Đã đăng ký thành công thành viên {full_name} và dọn dẹp ảnh tạm!"}
 
 @app.get("/api/logs")
 async def get_access_logs():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, user_id_num, full_name, email, position, access_date, accuracy, similar_to FROM access_logs ORDER BY id DESC LIMIT 50")
+    # Bổ sung image_path vào SQL SELECT:
+    cursor.execute("SELECT id, user_id_num, full_name, email, position, access_date, accuracy, similar_to, image_path FROM access_logs ORDER BY id DESC LIMIT 50")
     rows = cursor.fetchall()
     conn.close()
     
@@ -526,16 +657,16 @@ async def get_access_logs():
             "position": row["position"],
             "access_date": row["access_date"],
             "accuracy": row["accuracy"],
-            "similar_to": row["similar_to"]
+            "similar_to": row["similar_to"],
+            "image_path": row["image_path"] if "image_path" in row.keys() else "" # <-- Thêm dòng này
         }
         for row in rows
     ]
-
 @app.get("/api/users")
 async def get_users():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, user_id_num, user_name, email, position, register_date, image_path FROM storage_faces ORDER BY id DESC")
+    cursor.execute("SELECT id, user_id_num, user_name, email, position, register_date, image_path, image_base64 FROM storage_faces ORDER BY id DESC")
     rows = cursor.fetchall()
     conn.close()
     
@@ -547,7 +678,8 @@ async def get_users():
             "email": row["email"],
             "position": row["position"],
             "register_date": row["register_date"],
-            "image_path": row["image_path"]
+            "image_path": row["image_path"],
+            "image_base64": row["image_base64"] if "image_base64" in row.keys() else ""
         }
         for row in rows
     ]
@@ -579,6 +711,15 @@ async def delete_storage_image(image_id: int):
 
     return {"status": "success", "message": "Đã xóa ảnh thành công!"}
 
+# --- API XÓA TOÀN BỘ GÓI ĐĂNG KÝ CỦA THÀNH VIÊN ---
+@app.delete("/api/users/{user_db_id}")
+async def delete_user(user_db_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM storage_faces WHERE id = ?", (user_db_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "success", "message": "Đã xóa toàn bộ gói đăng ký thành công!"}
 
 if __name__ == "__main__":
     import uvicorn

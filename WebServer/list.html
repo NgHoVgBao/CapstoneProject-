@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,8 +9,7 @@
 			box-sizing: border-box;
 		}
 
-		html,
-		body {
+		html, body {
 			margin: 0;
 			min-height: 100%;
 			background: #ffffff;
@@ -18,18 +17,19 @@
 		}
 
 		.header {
-            display: flex;
-            align-items: center;      /* Căn giữa theo chiều dọc */
-            justify-content: center;  /* Căn giữa theo chiều ngang */
-		position: relative;
-            height: 54px;
-            padding: 0 16px;
-            background: #ffffff;
-            border-bottom: 1px solid #e5e5e5;
-            color: #222222;
-            font-size: 54px;
-            font-weight: 600;
-            box-shadow: 0 2px 4px rgba(5, 0, 15, 0.1);}
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			position: relative;
+			height: 54px;
+			padding: 0 16px;
+			background: #ffffff;
+			border-bottom: 1px solid #e5e5e5;
+			color: #222222;
+			font-size: 32px;
+			font-weight: 600;
+			box-shadow: 0 2px 4px rgba(5, 0, 15, 0.1);
+		}
 
 		.back-btn {
 			position: absolute;
@@ -74,6 +74,15 @@
 			font-weight: 700;
 		}
 
+		.member-table tbody tr {
+			cursor: pointer;
+			transition: background-color 0.15s ease;
+		}
+
+		.member-table tbody tr:hover {
+			background-color: #e2e8f0 !important;
+		}
+
 		.member-table tbody tr:nth-child(even) {
 			background: #fafafa;
 		}
@@ -81,25 +90,126 @@
 		.member-table .message {
 			color: #777777;
 			text-align: center;
+			cursor: default;
 		}
+
+		/* --- STYLES CHO POPUP (MODAL) CHI TIẾT --- */
+		.modal-overlay {
+			display: none;
+			position: fixed;
+			top: 0; 
+			left: 0; 
+			width: 100%; 
+			height: 100%;
+			background: rgba(0, 0, 0, 0.5);
+			justify-content: center;
+			align-items: center;
+			z-index: 1000;
+		}
+
+		.modal-card {
+			background: #ffffff;
+			width: 800px;
+			max-width: 95%;
+			border-radius: 8px;
+			padding: 20px;
+			box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+			position: relative;
+		}
+
+		.modal-header {
+			font-size: 20px;
+			font-weight: bold;
+			margin-bottom: 16px;
+			border-bottom: 1px solid #eee;
+			padding-bottom: 8px;
+			color: #222;
+		}
+
+		.modal-body {
+			display: flex;
+			gap: 16px;
+			align-items: flex-start;
+		}
+
+		/* Khung tỉ lệ hiển thị ảnh */
+		.modal-avatar-box {
+			width: 340px;
+			height: 340px;
+			border-radius: 6px;
+			border: 1px solid #ccc;
+			overflow: hidden;
+			background-color: #f0f0f0;
+			flex-shrink: 0;
+		}
+
+		.modal-avatar-box img {
+			width: 100%;
+			height: 100%;
+			object-fit: cover; /* Đảm bảo ảnh không bị méo tỉ lệ */
+		}
+
+		.modal-info {
+			flex: 1;
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			font-size: 14px;
+			color: #333;
+		}
+
+		.modal-info div strong {
+			color: #111;
+			display: inline-block;
+			width: 90px;
+		}
+
+		.close-btn {
+			position: absolute;
+			right: 15px;
+			top: 15px;
+			background: #dc3545;
+			color: white;
+			border: none;
+			border-radius: 4px;
+			padding: 4px 10px;
+			cursor: pointer;
+			font-weight: bold;
+		}
+
+		.close-btn:hover {
+			background: #b02a37;
+		}
+		.btn-del-user {
+			background-color: #dc3545; color: white; border: none; padding: 6px 12px;
+			border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s;
+		}
+		.btn-del-user:hover { background-color: #bd2130; }
+
+		/* POPUP XÁC NHẬN XÓA */
+		.confirm-card { width: 380px; text-align: center; padding: 20px; }
+		.confirm-btns { display: flex; justify-content: center; gap: 15px; margin-top: 20px; }
+		.btn-confirm-yes { background: #dc3545; color: white; border: none; padding: 8px 18px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+		.btn-confirm-no { background: #6c757d; color: white; border: none; padding: 8px 18px; border-radius: 4px; font-weight: bold; cursor: pointer; }
 	</style>
 </head>
 <body>
-	<header class="header" style="text-align: center;">
+	<header class="header">
 		<a class="back-btn" href="/monitor">Back</a>
 		Member list
 	</header>
 
 	<main class="member-list">
-		<table class="member-table">
+		<table class="member-table">			
 			<thead>
 				<tr>
-					<th scope="col">ID number</th>
-					<th scope="col">Full name</th>
-					<th scope="col">Position</th>
-					<th scope="col">Register date</th>
+					<th>ID number</th>
+					<th>Full name</th>
+					<th>Position</th>
+					<th>Register date</th>
+					<th style="width: 100px; text-align: center;">Hành động</th>
 				</tr>
-			</thead>
+			</thead>			
 			<tbody id="memberTableBody">
 				<tr>
 					<td class="message" colspan="4">Loading members...</td>
@@ -108,33 +218,106 @@
 		</table>
 	</main>
 
+	<!-- POPUP (MODAL) CHI TIẾT CÁ NHÂN -->
+	<div class="modal-overlay" id="detailModal">
+		<div class="modal-card">
+			<button class="close-btn" onclick="closeModal('detailModal')">✕</button>
+			<div class="modal-header">Member Details</div>
+			<div class="modal-body">
+				<div class="modal-avatar-box">
+					<img id="modalImg" src="" alt="Registered Image">
+				</div>
+				<div class="modal-info">
+					<div><strong>ID:</strong> <span id="modalId"></span></div>
+					<div><strong>Name:</strong> <span id="modalName"></span></div>
+					<div><strong>Email:</strong> <span id="modalEmail"></span></div>
+					<div><strong>Position:</strong> <span id="modalPosition"></span></div>
+					<div><strong>Reg Date:</strong> <span id="modalDate"></span></div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- POPUP XÁC NHẬN XÓA -->
+	<div class="modal-overlay" id="confirmModal">
+		<div class="modal-card confirm-card">
+			<h3 style="margin-top:0; color:#dc3545;">Xác nhận xóa?</h3>
+			<p>Bạn có chắc chắn muốn xóa toàn bộ gói đăng ký của thành viên này không?</p>
+			<div class="confirm-btns">
+				<button class="btn-confirm-yes" onclick="executeDelete()">Tiếp tục</button>
+				<button class="btn-confirm-no" onclick="closeModal('confirmModal')">Hủy</button>
+			</div>
+		</div>
+	</div>
 	<script>
+		let membersList = [];
+		let deleteTargetId = null;
+
 		async function loadMembers() {
 			const tableBody = document.getElementById('memberTableBody');
-
 			try {
 				const response = await fetch('/api/users');
-				if (!response.ok) {
-					throw new Error('Unable to load members');
-				}
+				membersList = await response.json();
 
-				const members = await response.json();
-				if (members.length === 0) {
-					tableBody.innerHTML = '<tr><td class="message" colspan="4">No members found.</td></tr>';
+				if (membersList.length === 0) {
+					tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Chưa có thành viên nào đăng ký.</td></tr>';
 					return;
 				}
 
-				tableBody.innerHTML = members.map((member) => `
-					<tr>
+				tableBody.innerHTML = membersList.map((member, index) => `
+					<tr onclick="openModal(${index})">
 						<td>${member.user_id || ''}</td>
 						<td>${member.user_name || ''}</td>
 						<td>${member.position || ''}</td>
 						<td>${member.register_date || ''}</td>
+						<td style="text-align: center;" onclick="event.stopPropagation()">
+							<button class="btn-del-user" onclick="askDelete(${member.id})">Xóa</button>
+						</td>
 					</tr>
 				`).join('');
 			} catch (error) {
-				tableBody.innerHTML = '<tr><td class="message" colspan="4">Unable to load members.</td></tr>';
+				tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Không thể tải dữ liệu.</td></tr>';
 			}
+		}
+
+		function openModal(index) {
+			const member = membersList[index];
+			if (!member) return;
+
+			document.getElementById('modalId').innerText = member.user_id || 'N/A';
+			document.getElementById('modalName').innerText = member.user_name || 'N/A';
+			document.getElementById('modalEmail').innerText = member.email || 'N/A';
+			document.getElementById('modalPosition').innerText = member.position || 'N/A';
+			document.getElementById('modalDate').innerText = member.register_date || 'N/A';
+			
+			// Ưu tiên lấy Base64 lưu hẳn trong DB để ảnh không bao giờ bị lỗi
+			const imgSrc = member.image_base64 || member.image_path || '/uploads/default.jpg';
+			document.getElementById('modalImg').src = imgSrc;
+
+			document.getElementById('detailModal').style.display = 'flex';
+		}
+
+		function askDelete(dbId) {
+			deleteTargetId = dbId;
+			document.getElementById('confirmModal').style.display = 'flex';
+		}
+
+		async function executeDelete() {
+			if (!deleteTargetId) return;
+			try {
+				const res = await fetch(`/api/users/${deleteTargetId}`, { method: 'DELETE' });
+				if (res.ok) {
+					closeModal('confirmModal');
+					loadMembers();
+				} else {
+					alert("Lỗi khi xóa thành viên!");
+				}
+			} catch (err) {
+				alert("Lỗi kết nối máy chủ!");
+			}
+		}
+
+		function closeModal(modalId) {
+			document.getElementById(modalId).style.display = 'none';
 		}
 
 		loadMembers();
