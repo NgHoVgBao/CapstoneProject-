@@ -331,43 +331,70 @@ async def process_register_frame(frame_bytes: bytes, websocket: WebSocket):
     conn.close()
 
 async def process_attendance_frame(frame_bytes: bytes, websocket: WebSocket):
-    # 1. Giải mã frame từ ESP32
+    # 0. Mốc bắt đầu tổng luồng
+    t_total_start = time.perf_counter()
+
+    # 1. Giải mã frame RGB565 từ ESP32
+    t0 = time.perf_counter()
     img = decode_rgb565_frame(frame_bytes)
+    t_decode = (time.perf_counter() - t0) * 1000  # ms
+
     if img is None:
-        await websocket.send_json({"status": "error", "user_id_num": "FAILED"})
+        await websocket.send_json({"status": "error", "user_id_num": "FA    ILED"})
         return
 
-    # 2. Nhận diện vị trí khuôn mặt bằng InsightFace
+    # 2. Nhận diện & Trích xuất Embedding bằng InsightFace (Recognition)
+    t0 = time.perf_counter()
     faces = ai_app.get(img)
+    t_insightface = (time.perf_counter() - t0) * 1000  # ms
+
     if len(faces) == 0:
         await websocket.send_json({"status": "success", "is_matched": False, "user_id_num": "UNKNOWN"})
         return
 
-    # 3. LƯU ẢNH VÀO THƯ MỤC ATTENDANCE (Luôn thực hiện dù thật hay giả)
+    # Lưu ảnh vào thư mục attendance
     timestamp = int(time.time())
     file_name = f"LOG_{timestamp}_{uuid.uuid4().hex[:6]}.jpg"
     file_path = os.path.join(ATTENDANCE_DIR, file_name)
     cv2.imwrite(file_path, img)
     web_image_path = f"/attendance/{file_name}"
 
-    # 4. Trích xuất Bounding Box để kiểm tra Anti-Spoofing (SilentFace)
+    # 3. Kiểm tra Chống giả mạo Anti-Spoofing (SilentFace)
     x1, y1, x2, y2 = map(int, faces[0].bbox)
     w, h = max(0, x2 - x1), max(0, y2 - y1)
     bbox = [x1, y1, w, h]
 
+    t0 = time.perf_counter()
     is_real, confidence = liveness_detector.check_liveness(img, bbox)
+    t_liveness = (time.perf_counter() - t0) * 1000  # ms
+
     input_vec = faces[0].embedding
 
-    # 5. Phân nhánh xử lý Ghi log & Truy vết
+    # 4. So khớp Cosine Similarity với Database SQL
+    t0 = time.perf_counter()
     if not is_real:
-        print(f"❌ CẢNH BÁO: Giả mạo bị phát hiện! (Độ tin cậy: {confidence:.2f}) -> Đang truy vết đối tượng...")
-        # Gọi match_face_and_log với cờ is_fake=True để tìm xem khuôn mặt này giống ai nhất trong DB
         response_data = match_face_and_log(input_vec, image_path=web_image_path, is_fake=True)
     else:
-        # Mặt thật -> Điểm danh bình thường
         response_data = match_face_and_log(input_vec, image_path=web_image_path, is_fake=False)
+    t_match_db = (time.perf_counter() - t0) * 1000  # ms
 
-    # 6. Gửi kết quả đầy đủ về ESP32 và Broadcast lên Web Monitor
+    t_total = (time.perf_counter() - t_total_start) * 1000  # ms
+
+    # --- IN BÁO CÁO HIỆU NĂNG RA CONSOLE SERVER ---
+    print(f"\n📊 [SERVER PERF LOG]")
+    print(f" ├─ Decode RGB565:   {t_decode:.1f} ms")
+    print(f" ├─ InsightFace:     {t_insightface:.1f} ms")
+    print(f" ├─ Anti-Spoofing:   {t_liveness:.1f} ms (Real: {is_real}, Conf: {confidence:.2f})")
+    print(f" ├─ DB Match Log:    {t_match_db:.1f} ms")
+    print(f" └─ TOTAL SERVER:    {t_total:.1f} ms\n")
+    # Thêm thời gian đo được vào dictionary phản hồi
+    response_data["perf_time"] = {
+    "decode_ms": round(t_decode, 1),
+    "insightface_ms": round(t_insightface, 1),
+    "anti_spoofing_ms": round(t_liveness, 1),
+    "total_server_ms": round(t_total, 1)
+    }
+    # 5. Gửi kết quả về ESP32 và Web Monitor
     await websocket.send_json(response_data)
     await manager.broadcast(response_data)
 
